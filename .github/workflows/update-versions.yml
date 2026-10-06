@@ -1,0 +1,70 @@
+# 采集 6 款游戏最新版本，写入 GamePush-Plugin/<游戏>/main|pre/<版本号>.json
+#
+# ── 为什么用 GitHub Actions ──────────────────────────────────────────
+# 公开仓库的 Actions 完全免费、不限分钟数；CNB 云原生构建仅 160 核时/月，
+# 5 分钟一轮的频率会超额。故定时采集放在这里。
+#
+# ── 调度 ─────────────────────────────────────────────────────────────
+# GitHub 的 cron 一律使用 **UTC**，北京时间需减 8 小时。
+#
+#   目标：北京 03:00 – 23:59，每 5 分钟一次
+#   换算：北京 03:00 = UTC 19:00（前一日）
+#         北京 23:55 = UTC 15:55（当日）
+#   → UTC 覆盖  19:00–23:55  与  00:00–15:55
+#   → cron      */5 0-15,19-23 * * *
+#
+# 注意事项：
+#   1. GitHub 的 schedule 不保证准点，高峰期常延迟 5–30 分钟，做不到分钟级精确。
+#   2. schedule 只在**默认分支**上生效。
+#   3. 公开仓库连续 60 天无提交活动，schedule 会被自动停用（可在 Actions 页手动唤醒）。
+#   4. 私有仓库 Actions 每月仅 2000 分钟免费额度，本频率约需 3800 分钟/月，
+#      因此**本仓库必须保持 public**。
+#   5. 用默认 GITHUB_TOKEN 提交不会再次触发 workflow，天然避免自触发死循环。
+
+name: Update Game Push Versions
+
+on:
+  schedule:
+    - cron: "*/5 0-15,19-23 * * *"
+  workflow_dispatch:
+
+# 需要写权限才能把采集结果提交回仓库
+permissions:
+  contents: write
+
+# 定时与手动触发可能重叠，排队执行而非取消，避免丢采集
+concurrency:
+  group: update-versions
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 采集脚本依赖内置 node:sqlite，需 Node >= 22
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 采集版本数据
+        env:
+          RELEASE_ROOT: GamePush-Plugin
+        run: |
+          # 脚本内部已按游戏隔离 try/catch，单个游戏失败不影响其余
+          node scripts/update-versions.mjs || echo "⚠️ 部分游戏采集失败，跳过本轮"
+
+      - name: 提交并推送
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- GamePush-Plugin; then
+            echo "✅ 无新增版本，跳过提交"
+            exit 0
+          fi
+
+          git add GamePush-Plugin
+          git commit -m "chore(gamepush): 采集游戏版本数据"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
