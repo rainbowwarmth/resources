@@ -130,7 +130,7 @@ async function mhyFetch(game, type) {
 
 /* ──────────────────────────── 库洛（ww） ──────────────────────────── */
 
-const WW_INDEX = "https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json"
+const WW_INDEX = "https://cdn.451278.xyz/https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json"
 
 async function wwFetch(type) {
   const data = await getJson(WW_INDEX)
