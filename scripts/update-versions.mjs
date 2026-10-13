@@ -57,15 +57,15 @@ function writeRecord(game, type, record) {
   const dir = path.join(ROOT, game, type)
   const file = path.join(dir, `${record.version}.json`)
   if (fs.existsSync(file)) return "exists"
-
   const payload = { version: record.version }
   if (type === "pre") payload.oldver = record.oldver
   payload.size = record.size
   payload.time = nowText()
-
   if (!DRY) {
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, "utf8")
+    // ✅ 写入完成二次校验：防止并发竞态，别的job抢先创建
+    if (!fs.existsSync(file)) return "exists"
   }
   return "created"
 }
