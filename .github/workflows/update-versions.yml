@@ -20,51 +20,44 @@
 #   4. 私有仓库 Actions 每月仅 2000 分钟免费额度，本频率约需 3800 分钟/月，
 #      因此**本仓库必须保持 public**。
 #   5. 用默认 GITHUB_TOKEN 提交不会再次触发 workflow，天然避免自触发死循环。
-
 name: Update Game Push Versions
-
 on:
   schedule:
     - cron: "*/5 0-15,19-23 * * *"
   workflow_dispatch:
-
 # 需要写权限才能把采集结果提交回仓库
 permissions:
   contents: write
-
-# 定时与手动触发可能重叠，排队执行而非取消，避免丢采集
+# 新任务触发时取消正在运行的旧任务，防止多Runner并发竞态
 concurrency:
   group: update-versions
-  cancel-in-progress: false
-
+  cancel-in-progress: true
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       # 采集脚本依赖内置 node:sqlite，需 Node >= 22
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-
       - name: 采集版本数据
         env:
           RELEASE_ROOT: GamePush-Plugin
         run: |
           # 脚本内部已按游戏隔离 try/catch，单个游戏失败不影响其余
           node scripts/update-versions.mjs || echo "⚠️ 部分游戏采集失败，跳过本轮"
-
       - name: 提交并推送
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          if git diff --quiet -- GamePush-Plugin; then
+          # git status --porcelain 可以捕获全新untracked文件（git diff无法识别新建文件）
+          CHANGES=$(git status --porcelain GamePush-Plugin)
+          if [ -z "$CHANGES" ]; then
             echo "✅ 无新增版本，跳过提交"
             exit 0
           fi
-
           git add GamePush-Plugin
           git commit -m "chore(gamepush): 采集游戏版本数据"
           git push origin "HEAD:${GITHUB_REF_NAME}"
