@@ -130,27 +130,48 @@ async function mhyFetch(game, type) {
 
 /* ──────────────────────────── 库洛（ww） ──────────────────────────── */
 
-const WW_INDEX = "https://cdn.451278.xyz/https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json"
+const WW_INDEX = "https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json"
 
 async function wwFetch(type) {
-  const data = await getJson(WW_INDEX)
+  const data = await getJsonWithRetry(WW_INDEX)
   const section = type === "pre" ? data?.predownload?.config : data?.default?.config
   const version = releaseText(section?.version)
   if (!version) return null
-
   if (type !== "pre") {
     return { version, size: formatSize(section?.size) }
   }
-
   // 增量包在 patchConfig 里，按版本号取最高的那条作为「升级前版本」
   const patch = [...(section?.patchConfig || [])]
     .filter((item) => releaseText(item?.version))
     .sort((a, b) => String(b.version).localeCompare(String(a.version), undefined, { numeric: true }))[0]
   if (!patch) return null
-
   return { version, oldver: patch.version, size: formatSize(patch.size) }
 }
 
+async function getJsonWithRetry(url, retries = 2) {
+  let lastErr
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(TIMEOUT),
+        headers: {
+          // 使用库洛启动器原生UA，替换Mozilla
+          "User-Agent": "KuroGameLauncher/1.0.0",
+          "Accept": "application/json"
+        }
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    } catch (err) {
+      lastErr = err
+      if (i < retries) {
+        // 重试前短暂休眠
+        await new Promise(r => setTimeout(r, 1200))
+      }
+    }
+  }
+  throw lastErr
+}
 /* ──────────────────────────── 鹰角（zmd） ──────────────────────────── */
 
 const HG = {
